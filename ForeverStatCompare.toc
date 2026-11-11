@@ -1,0 +1,8 @@
+## Interface: 16001
+## Title: Forever Stat Compare
+## Notes: Adds Forever-derived stat changes to the native item comparison tooltip.
+## Author: atr2982
+## Version: 1.0.0
+## Category: Tooltip
+
+ForeverStatCompare.lua
