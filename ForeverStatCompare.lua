@@ -39,6 +39,10 @@ local LABELS = {
     MP5 = "Mana per 5 sec", Mana = "Mana",
 }
 
+local function UsableNumber(value)
+    return type(value) == "number" and not (issecretvalue and issecretvalue(value))
+end
+
 local function ItemLink(tooltip)
     if not tooltip then return end
     local link
@@ -120,11 +124,15 @@ local function AddDerived(delta, out)
         local function staminaHealth(value)
             return math.min(value, breakpoint) + math.max(0, value - breakpoint) * rate
         end
-        out.Health = (delta.Health or 0) + staminaHealth(stamina + delta.Stamina) - staminaHealth(stamina)
+        if UsableNumber(stamina) and UsableNumber(rate) then
+            out.Health = (delta.Health or 0) + staminaHealth(stamina + delta.Stamina) - staminaHealth(stamina)
+        end
     end
-    if type(GetAttackPowerForStat) == "function" then
-        local ap = GetAttackPowerForStat(1, currentStr + str) - GetAttackPowerForStat(1, currentStr)
-        local agilityAP
+    if type(GetAttackPowerForStat) == "function" and UsableNumber(currentStr) and UsableNumber(currentAgi) then
+        local baseAP = GetAttackPowerForStat(1, currentStr)
+        local changedAP = GetAttackPowerForStat(1, currentStr + str)
+        local ap = UsableNumber(baseAP) and UsableNumber(changedAP) and changedAP - baseAP or 0
+        local agilityAP = 0
         local _, class = UnitClass("player")
         if class == "DRUID" then
             -- Forever's form IDs are Cat=1, Bear=5, Dire Bear=8.
@@ -133,26 +141,42 @@ local function AddDerived(delta, out)
         else
             -- Forever's class-aware conversion handles Rogue, Hunter, and
             -- the remaining classes here.
-            agilityAP = GetAttackPowerForStat(2, currentAgi + agi) - GetAttackPowerForStat(2, currentAgi)
+            local baseAgiAP = GetAttackPowerForStat(2, currentAgi)
+            local changedAgiAP = GetAttackPowerForStat(2, currentAgi + agi)
+            if UsableNumber(baseAgiAP) and UsableNumber(changedAgiAP) then
+                agilityAP = changedAgiAP - baseAgiAP
+            end
         end
         ap = ap + agilityAP
         ap = ap + (delta.AttackPower or 0)
         if ap ~= 0 then out.AttackPower = (out.AttackPower or 0) + ap end
     end
-    if type(GetRangedAttackPowerForStat) == "function" then
-        local rap = GetRangedAttackPowerForStat(2, currentAgi + agi) - GetRangedAttackPowerForStat(2, currentAgi)
+    if type(GetRangedAttackPowerForStat) == "function" and UsableNumber(currentAgi) then
+        local baseRAP = GetRangedAttackPowerForStat(2, currentAgi)
+        local changedRAP = GetRangedAttackPowerForStat(2, currentAgi + agi)
+        local rap = UsableNumber(baseRAP) and UsableNumber(changedRAP) and changedRAP - baseRAP or 0
         rap = rap + (delta.RangedAttackPower or 0)
         if rap ~= 0 then out.RangedAttackPower = (out.RangedAttackPower or 0) + rap end
     end
-    if type(GetCritChanceFromStat) == "function" then
-        local crit = (GetCritChanceFromStat(2, currentAgi + agi) - GetCritChanceFromStat(2, currentAgi)) * 100
-        if crit ~= 0 then out.Crit = (out.Crit or 0) + crit end
+    if type(GetCritChanceFromStat) == "function" and UsableNumber(currentAgi) then
+        local baseCrit = GetCritChanceFromStat(2, currentAgi)
+        local changedCrit = GetCritChanceFromStat(2, currentAgi + agi)
+        if UsableNumber(baseCrit) and UsableNumber(changedCrit) then
+            local crit = (changedCrit - baseCrit) * 100
+            if crit ~= 0 then out.Crit = (out.Crit or 0) + crit end
+        end
     end
-    if type(GetSpellCritChanceFromStat) == "function" then
-        local crit = (GetSpellCritChanceFromStat(4, currentInt + int) - GetSpellCritChanceFromStat(4, currentInt)) * 100
-        if crit ~= 0 then out.SpellCrit = (out.SpellCrit or 0) + crit end
+    if type(GetSpellCritChanceFromStat) == "function" and UsableNumber(currentInt) then
+        local baseCrit = GetSpellCritChanceFromStat(4, currentInt)
+        local changedCrit = GetSpellCritChanceFromStat(4, currentInt + int)
+        if UsableNumber(baseCrit) and UsableNumber(changedCrit) then
+            local crit = (changedCrit - baseCrit) * 100
+            if crit ~= 0 then out.SpellCrit = (out.SpellCrit or 0) + crit end
+        end
     end
-    if UnitPowerMax and Enum and Enum.PowerType and Enum.PowerType.Mana and UnitPowerMax("player", Enum.PowerType.Mana) > 0 then
+    local maxMana = UnitPowerMax and Enum and Enum.PowerType and Enum.PowerType.Mana
+        and UnitPowerMax("player", Enum.PowerType.Mana)
+    if UsableNumber(maxMana) and maxMana > 0 then
         if int ~= 0 then out.Mana = int * 15 end
     end
 
@@ -234,6 +258,7 @@ local function BuildRows(newLink, oldLink)
     if spirit ~= 0 then
         local _, class = UnitClass("player")
         local _, currentSpirit = UnitStat("player", 5)
+        if not UsableNumber(currentSpirit) then return rows end
         local function addRate(label, rate, readRegen, scale)
             -- A single reading gives an average per point, not a marginal
             -- rate. Use it until a gear swap measures the slope.
